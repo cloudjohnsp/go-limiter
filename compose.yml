@@ -1,5 +1,5 @@
 services:
-  proxy:
+  nginx:
     image: nginx:alpine
     container_name: proxy
     ports:
