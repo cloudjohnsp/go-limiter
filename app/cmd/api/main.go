@@ -7,7 +7,7 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte("OK"))
 		if err != nil {
@@ -24,5 +24,5 @@ func main() {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start API server: %v", err)
 	}
-	log.Printf("API server started on port %s", addr)
+	print("API server started on port %s", addr)
 }
