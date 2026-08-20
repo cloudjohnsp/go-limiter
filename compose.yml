@@ -1,13 +1,13 @@
 services:
   nginx:
     image: nginx:alpine
-    container_name: proxy
+    container_name: nginx
     ports:
       - "80:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
-
+ # api service, the name must match the name in the nginx.conf file, so Docker DNS will resolve the name to the container name
   api:
     build: ./app
     container_name: api
