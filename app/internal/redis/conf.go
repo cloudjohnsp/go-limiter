@@ -19,19 +19,19 @@ func NewRedisClient() (*goredis.Client, error) {
 	log.Printf("Starting Redis on: %s", addr)
 
 	rdb := goredis.NewClient(&goredis.Options{
-		Addr:     addr,
+		Addr: addr,
 		Password: "",
-		DB:       0,
+		DB: 0,
 
 		PoolSize: 20,
 		MinIdleConns: 5,
 
-		PoolTimeout:  1 * time.Second,
-		DialTimeout:  500 * time.Millisecond,
-		ReadTimeout:  500 * time.Millisecond,
+		PoolTimeout: 1 * time.Second,
+		DialTimeout: 500 * time.Millisecond,
+		ReadTimeout: 500 * time.Millisecond,
 		WriteTimeout: 500 * time.Millisecond,
 
-		MaxRetries:      0,
+		MaxRetries: 0,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
