@@ -22,7 +22,16 @@ func NewRedisClient() (*goredis.Client, error) {
 		Addr:     addr,
 		Password: "",
 		DB:       0,
-		Protocol: 2,
+
+		PoolSize: 20,
+		MinIdleConns: 5,
+
+		PoolTimeout:  1 * time.Second,
+		DialTimeout:  500 * time.Millisecond,
+		ReadTimeout:  500 * time.Millisecond,
+		WriteTimeout: 500 * time.Millisecond,
+
+		MaxRetries:      0,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
