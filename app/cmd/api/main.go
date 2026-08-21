@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"go-limiter/internal/redis"
 )
 
 func main() {
@@ -16,13 +17,16 @@ func main() {
 	})
 
 	addr := ":8080"
-	log.Printf("Starting API server on port %s", addr)
+	log.Printf("Starting API server on: %s", addr)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,
 	}
+	if _, err := redis.NewRedisClient(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start API server: %v", err)
 	}
-	print("API server started on port %s", addr)
 }
