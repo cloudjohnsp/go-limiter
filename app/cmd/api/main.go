@@ -8,13 +8,8 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte("OK"))
-		if err != nil {
-			log.Printf("Failed to write response: %v", err)
-		}
-	})
+	
+	mux.HandleFunc("GET /healthz", healthHandler)
 
 	addr := ":8080"
 	log.Printf("Starting API server on: %s", addr)
@@ -29,4 +24,12 @@ func main() {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start API server: %v", err)
 	}
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("OK"))
+		if err != nil {
+			log.Printf("Failed to write response: %v", err)
+		}
 }
