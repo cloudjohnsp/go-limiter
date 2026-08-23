@@ -108,13 +108,13 @@ baseline_code=$(get_status_code "${BASE_URL}/" | tr -d '\n')
 printf '  HTTP %s\n' "$baseline_code"
 
 # 3. Burst traffic against rate-limited path
-step "Burst test (GET /api/ x ${REQUEST_COUNT} in parallel)"
+step "Burst test (GET /api x ${REQUEST_COUNT} in parallel)"
 burst_file=$(mktemp)
 trap 'rm -f "$burst_file"' EXIT
 
 start_ms=$(date +%s%3N)
 for _ in $(seq 1 "$REQUEST_COUNT"); do
-    curl -s -o /dev/null -w $'%{http_code}\n' --max-time 10 "${BASE_URL}/api/" >>"$burst_file" &
+    curl -s -o /dev/null -w $'%{http_code}\n' --max-time 10 "${BASE_URL}/api" >>"$burst_file" &
 done
 wait
 end_ms=$(date +%s%3N)
