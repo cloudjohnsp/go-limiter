@@ -74,7 +74,7 @@ func rateLimit(rdb *goredis.Client, next http.Handler) http.Handler {
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
-		log.Printf("Request Allowed. %.Of tokens remaining. \n", remaining)
+		log.Printf("Request Allowed. %d tokens remaining. \n", int64(remaining))
 		next.ServeHTTP(w, r)
 	})
 }
