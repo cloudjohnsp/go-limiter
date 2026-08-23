@@ -51,23 +51,30 @@ func rateLimit(rdb *goredis.Client, next http.Handler) http.Handler {
 		key := "rl:ip:" + getClientIP(r)
 		log.Printf("key: %s", key)
 
-		_, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
+		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
 		defer cancel()
+		// Executes an atomic Lua script.
+		limiter := redis.NewTokenBucket(redis.TokenBucketConfig{
+			Client:         rdb,
+			Capacity:       30,          // Maximum burst size
+			RefillRate:     1,           // Add 1 token per interval
+			RefillInterval: time.Second, // Every 1 second
+		})
 
-		// result, err := rdb.EvalSha(ctx, scriptSHA, []string{key}, args...).Result()
-		// if err != nil {
-		// 	// Choose intentionally: fail open or fail closed.
-		// 	http.Error(w, "rate limiter unavailable", http.StatusServiceUnavailable)
-		// 	return
-		// }
+		allowed, remaining, err := limiter.Allow(ctx, key)
 
-		// allowed := result.(int64) == 1
-		// if !allowed {
-		// 	w.Header().Set("Retry-After", "60") // Ideally return this from Lua.
-		// 	http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-		// 	return
-		// }
+		if err != nil {
+			// Choose intentionally: fail open or fail closed.
+			http.Error(w, "Rate limiter unavailable", http.StatusServiceUnavailable)
+			return
+		}
 
+		if !allowed {
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		log.Printf("Request Allowed. %.Of tokens remaining. \n", remaining)
 		next.ServeHTTP(w, r)
 	})
 }
