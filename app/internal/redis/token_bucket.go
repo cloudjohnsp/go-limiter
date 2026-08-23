@@ -63,7 +63,15 @@ func (b *TokenBucket) Allow(ctx context.Context, key string) (bool, float64, err
 		return false, 0, fmt.Errorf("invalid token bucket configuration")
 	}
 
-	result, err := tokenBucketScript.Run(ctx, b.client, []string{key}, b.capacity, b.refillRate, b.refillInterval.Milliseconds(), time.Now().UnixMilli()).Result()
+	result, err := tokenBucketScript.Run(
+		ctx, b.client,
+		[]string{key},
+		b.capacity,
+		b.refillRate,
+		b.refillInterval.Milliseconds(),
+		time.Now().UnixMilli()
+	).Result()
+	
 	if err != nil {
 		return false, 0, err
 	}
