@@ -79,7 +79,7 @@ func rateLimit(rdb *goredis.Client, next http.Handler) http.Handler {
 		}
 
 		if !allowed {
-			w.Header().Set("Retry-After", "60")
+			w.Header().Set("Retry-After", "1")
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
