@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"errors"
 
 	"go-limiter/internal/redis"
 
@@ -21,8 +22,8 @@ func main() {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
-	mux.Handle("/api/", rateLimit(rdb, http.HandlerFunc(apiHandler)))
 	mux.HandleFunc("/healthz", healthHandler)
+	mux.Handle("/api", rateLimit(rdb, http.HandlerFunc(apiHandler)))
 
 	addr := ":8080"
 	log.Printf("Starting API server on: %s", addr)
@@ -48,7 +49,14 @@ func rateLimit(rdb *goredis.Client, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = rdb
 
-		key := "rl:ip:" + getClientIP(r)
+		requestApikey, err := getRequestApiKey(r)
+
+		if err != nil {
+			http.Error(w, "Failed to retrieve key", http.StatusBadRequest)
+			return
+		}
+
+		key := "rl:apikey:" + requestApikey
 		log.Printf("key: %s", key)
 
 		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
@@ -97,6 +105,17 @@ func getClientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return ip
+}
+
+func getRequestApiKey(r *http.Request) (string, error) {
+	apiKey := r.Header.Get("X-API-KEY");
+	if apiKey != "" {
+		apiKey = apiKey
+	} else {
+		log.Printf("Failed to retrieve a valid api-key")
+		return "", errors.New("Failed to retrieve a valid api-key")
+	}
+	return apiKey, nil
 }
 
 func apiHandler(w http.ResponseWriter, r *http.Request) {
