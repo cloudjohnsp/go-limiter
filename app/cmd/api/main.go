@@ -10,6 +10,7 @@ import (
 	"errors"
 
 	"go-limiter/internal/redis"
+"go-limiter/cmd/api/handlers"
 
 	goredis "github.com/redis/go-redis/v9"
 )
@@ -22,7 +23,7 @@ func main() {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
-	mux.HandleFunc("/healthz", healthHandler)
+	mux.HandleFunc("/healthz", handlers.HealthHandler)
 	mux.Handle("/api", rateLimit(rdb, http.HandlerFunc(apiHandler)))
 
 	addr := ":8080"
