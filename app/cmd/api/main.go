@@ -1,13 +1,14 @@
 package main
 
 import (
-	"os"
+	"context"
+	"errors"
 	"log"
 	"net/http"
-	"time"
+	"os/signal"
+	"sync/atomic"
 	"syscall"
-	"signal"
-	"atomic"
+	"time"
 
 	"go-limiter/internal/api/handlers"
 	"go-limiter/internal/middleware"
@@ -15,9 +16,8 @@ import (
 )
 
 const (
-	_shutdownPeriod      = 15 * time.Second
-	_shutdownHardPeriod  = 3 * time.Second
-	_readinessDrainDelay = 5 * time.Second
+	shutdownPeriod      = 15 * time.Second
+	readinessDrainDelay = 5 * time.Second
 )
 
 var isShuttingDown atomic.Bool
@@ -26,58 +26,73 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
-
 	mux := http.NewServeMux()
-
 	rdb, err := redis.NewRedisClient()
 	if err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			log.Printf("Failed to close Redis client: %v", err)
+		}
+	}()
+
 	limiter := redis.NewTokenBucket(redis.TokenBucketConfig{
 		Client:         rdb,
-		Capacity:       30,          // Maximum burst size
-		RefillRate:     1,           // Add 1 token per interval
-		RefillInterval: time.Second, // Every 1 second
+		Capacity:       30,
+		RefillRate:     1,
+		RefillInterval: time.Second,
 	})
 
-	mux.HandleFunc("/healthz", handlers.ApiHandler)
+	mux.HandleFunc("/healthz", healthHandler)
 	mux.Handle("/api/", middleware.RateLimit(limiter, http.HandlerFunc(handlers.ApiHandler)))
 
-	addr := ":8080"
-	log.Printf("Starting API server on: %s", addr)
 	server := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              ":8080",
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       500 * time.Millisecond,
 		WriteTimeout:      500 * time.Millisecond,
-		IdleTimeout:       60 * time.Second
+		IdleTimeout:       60 * time.Second,
 	}
 
-	
+	serverErr := make(chan error, 1)
 	go func() {
-		if err := server.ListenAndServe(ctx); err != nil && err != http.ErrServerClosed {
+		log.Printf("Starting API server on: %s", server.Addr)
+		serverErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Failed to start API server: %v", err)
 		}
-	}()	
-	
-	<-rootCtx.Done()
-	stop()
+		return
+	case <-rootCtx.Done():
+		log.Println("Received shutdown signal; starting graceful shutdown.")
+	}
+
 	isShuttingDown.Store(true)
-	log.Println("Received shutdown signal, shutting down.")
+	server.SetKeepAlivesEnabled(false)
+	time.Sleep(readinessDrainDelay)
 
-	time.Sleep(_readinessDrainDelay)
-	log.Println("Readiness check propagated, now waiting for ongoing requests to finish.")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownPeriod)
 	defer cancel()
-
-	stopOngoingGracefully()
-	if err != nil {
-		log.Println("Failed to wait for ongoing requests to finish, waiting for forced cancellation.")
-		time.Sleep(_shutdownHardPeriod)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Graceful shutdown timed out: %v", err)
+		if closeErr := server.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+			log.Printf("Failed to force-close server: %v", closeErr)
+		}
+		return
 	}
 
 	log.Println("Server shut down gracefully.")
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if isShuttingDown.Load() {
+		http.Error(w, "shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	handlers.ApiHandler(w, r)
 }
