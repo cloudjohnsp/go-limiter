@@ -1,16 +1,33 @@
 package main
 
 import (
+	"os"
 	"log"
 	"net/http"
 	"time"
+	"syscall"
+	"signal"
+	"atomic"
 
 	"go-limiter/internal/api/handlers"
 	"go-limiter/internal/middleware"
 	"go-limiter/internal/redis"
 )
 
+const (
+	_shutdownPeriod      = 15 * time.Second
+	_shutdownHardPeriod  = 3 * time.Second
+	_readinessDrainDelay = 5 * time.Second
+)
+
+var isShuttingDown atomic.Bool
+
 func main() {
+	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
+
 	mux := http.NewServeMux()
 
 	rdb, err := redis.NewRedisClient()
@@ -38,7 +55,29 @@ func main() {
 		IdleTimeout:       60 * time.Second
 	}
 
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Failed to start API server: %v", err)
+	
+	go func() {
+		if err := server.ListenAndServe(ctx); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start API server: %v", err)
+		}
+	}()	
+	
+	<-rootCtx.Done()
+	stop()
+	isShuttingDown.Store(true)
+	log.Println("Received shutdown signal, shutting down.")
+
+	time.Sleep(_readinessDrainDelay)
+	log.Println("Readiness check propagated, now waiting for ongoing requests to finish.")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
+	defer cancel()
+
+	stopOngoingGracefully()
+	if err != nil {
+		log.Println("Failed to wait for ongoing requests to finish, waiting for forced cancellation.")
+		time.Sleep(_shutdownHardPeriod)
 	}
+
+	log.Println("Server shut down gracefully.")
 }
