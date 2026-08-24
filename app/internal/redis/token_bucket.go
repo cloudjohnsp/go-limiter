@@ -69,7 +69,7 @@ func (b *TokenBucket) Allow(ctx context.Context, key string) (bool, float64, err
 		b.capacity,
 		b.refillRate,
 		b.refillInterval.Milliseconds(),
-		time.Now().UnixMilli()
+		time.Now().UnixMilli(),
 	).Result()
 	
 	if err != nil {
