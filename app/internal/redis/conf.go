@@ -1,46 +1,45 @@
 package redis
 
 import (
-	"log"
 	"context"
+	"crypto/tls"
 	"fmt"
-	"os"
-	"time"
+	"log"
+
+	"go-limiter/internal/config"
 
 	goredis "github.com/redis/go-redis/v9"
 )
 
-func NewRedisClient() (*goredis.Client, error) {
-	addr := os.Getenv("REDIS_ADDR")
-	if addr == "" {
-		addr = "localhost:6379"
+func NewRedisClient(cfg config.RedisConfig) (*goredis.Client, error) {
+	log.Printf("Starting Redis on: %s", cfg.Addr)
+
+	var tlsConfig *tls.Config
+	if cfg.TLS {
+		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 
-	log.Printf("Starting Redis on: %s", addr)
-
 	rdb := goredis.NewClient(&goredis.Options{
-		Addr: addr,
-		Password: "",
-		DB: 0,
-
-		PoolSize: 20,
-		MinIdleConns: 5,
-
-		PoolTimeout: 1 * time.Second,
-		DialTimeout: 500 * time.Millisecond,
-		ReadTimeout: 500 * time.Millisecond,
-		WriteTimeout: 500 * time.Millisecond,
-
-		MaxRetries: 0,
+		Addr:         cfg.Addr,
+		Password:     cfg.Password,
+		DB:           cfg.DB,
+		PoolSize:     cfg.PoolSize,
+		MinIdleConns: cfg.MinIdleConns,
+		PoolTimeout:  cfg.PoolTimeout,
+		DialTimeout:  cfg.DialTimeout,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		MaxRetries:   cfg.MaxRetries,
+		TLSConfig:    tlsConfig,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.PingTimeout)
 	defer cancel()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		_ = rdb.Close()
-		return nil, fmt.Errorf("redis ping %s: %w", addr, err)
+		return nil, fmt.Errorf("redis ping %s: %w", cfg.Addr, err)
 	}
-	log.Printf("Redis is running on: %s", addr)
+	log.Printf("Redis is running on: %s", cfg.Addr)
 	return rdb, nil
 }

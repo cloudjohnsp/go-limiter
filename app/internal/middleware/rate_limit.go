@@ -10,7 +10,7 @@ import (
 	"go-limiter/internal/redis"
 )
 
-func RateLimit(limiter *redis.TokenBucket, next http.Handler) http.Handler {
+func RateLimit(limiter *redis.TokenBucket, requestTimeout time.Duration, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestApikey, err := helpers.GetRequestApiKey(r)
 
@@ -22,7 +22,7 @@ func RateLimit(limiter *redis.TokenBucket, next http.Handler) http.Handler {
 		key := "rl:apikey:" + requestApikey
 		log.Printf("key: %s", key)
 
-		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
+		ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 		defer cancel()
 
 		allowed, remaining, err := limiter.Allow(ctx, key)

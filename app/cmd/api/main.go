@@ -11,13 +11,9 @@ import (
 	"time"
 
 	"go-limiter/internal/api/handlers"
+	"go-limiter/internal/config"
 	"go-limiter/internal/middleware"
 	"go-limiter/internal/redis"
-)
-
-const (
-	shutdownPeriod      = 15 * time.Second
-	readinessDrainDelay = 5 * time.Second
 )
 
 var isShuttingDown atomic.Bool
@@ -26,8 +22,13 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Invalid configuration: %v", err)
+	}
+
 	mux := http.NewServeMux()
-	rdb, err := redis.NewRedisClient()
+	rdb, err := redis.NewRedisClient(cfg.Redis)
 	if err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
@@ -39,21 +40,21 @@ func main() {
 
 	limiter := redis.NewTokenBucket(redis.TokenBucketConfig{
 		Client:         rdb,
-		Capacity:       30,
-		RefillRate:     1,
-		RefillInterval: time.Second,
+		Capacity:       cfg.RateLimit.Capacity,
+		RefillRate:     cfg.RateLimit.RefillRate,
+		RefillInterval: cfg.RateLimit.RefillInterval,
 	})
 
 	mux.HandleFunc("/healthz", healthHandler)
-	mux.Handle("/api/", middleware.RateLimit(limiter, http.HandlerFunc(handlers.ApiHandler)))
+	mux.Handle("/api/", middleware.RateLimit(limiter, cfg.RateLimit.RequestTimeout, http.HandlerFunc(handlers.ApiHandler)))
 
 	server := &http.Server{
-		Addr:              ":8080",
+		Addr:              cfg.Server.Addr,
 		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       500 * time.Millisecond,
-		WriteTimeout:      500 * time.Millisecond,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		WriteTimeout:      cfg.Server.WriteTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
 	serverErr := make(chan error, 1)
@@ -74,9 +75,9 @@ func main() {
 
 	isShuttingDown.Store(true)
 	server.SetKeepAlivesEnabled(false)
-	time.Sleep(readinessDrainDelay)
+	time.Sleep(cfg.Shutdown.ReadinessDrainDelay)
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownPeriod)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Shutdown.Period)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Graceful shutdown timed out: %v", err)
